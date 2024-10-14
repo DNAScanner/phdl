@@ -20,6 +20,12 @@ type VideoData = {
 	};
 };
 
+type DetailedVideoData = VideoData & {
+	description: string;
+	tags: string[];
+	uploadDate: Date;
+};
+
 type AccountData = {
 	tag: string;
 	username: string;
