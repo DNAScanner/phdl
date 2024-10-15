@@ -160,4 +160,3 @@ const getAccountData = async (tag: string): Promise<AccountData> => {
 	return data;
 };
 
-console.log(await(await getAccountData("mira-david")).getAllVideos());
