@@ -1,10 +1,23 @@
 const headers = {
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/",
+	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
 };
 
 const BASE_URL = "https://www.pornhub.com/";
 
-type VideoData = {
+export type StreamData = {
+	url: string;
+	quality: string;
+};
+
+export enum Order {
+	MostViewed = "&o=mv",
+	MostRecent = "&o=mr",
+	TopRated = "&o=tr",
+	Longest = "&o=lg",
+	Best = "",
+}
+
+export type VideoData = {
 	title: string;
 	url: string;
 	views: number;
@@ -18,15 +31,11 @@ type VideoData = {
 		url: string;
 		get: () => Promise<ArrayBuffer>;
 	};
+	streams: () => Promise<StreamData[]>;
+	tags: () => Promise<string[]>;
 };
 
-type DetailedVideoData = VideoData & {
-	description: string;
-	tags: string[];
-	uploadDate: Date;
-};
-
-type AccountData = {
+export type AccountData = {
 	tag: string;
 	username: string;
 	description: string;
@@ -78,14 +87,44 @@ const convertDurationStringToSeconds = (duration: string): number => {
 	return seconds;
 };
 
-const getVideoPageCount = async (tag: string): Promise<number> => {
+export const getStreams = async (url: string): Promise<StreamData[]> => {
+	const response = await fetch(url, {headers, redirect: "manual"});
+
+	if (response.status !== 200) throw new Error(`Could not fetch streams from url ${url}`, {cause: response.statusText});
+
+	const html = await response.text();
+
+	return [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
+		.map((match) => JSON.parse(match[1]) as string)
+		.map((url) => ({url, quality: /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms.exec(url)![1].trim()}))
+		.sort((a, b) => Number(b.quality) - Number(a.quality));
+};
+
+export const getTags = async (url: string): Promise<string[]> => {
+	const response = await fetch(url, {headers, redirect: "manual"});
+
+	if (response.status !== 200) throw new Error(`Could not fetch tags from url ${url}`, {cause: response.statusText});
+
+	const html = await response.text();
+
+	return [
+		.../<p>Categories&nbsp;<\/p>(.+?)<div/gms
+			.exec(html)![1]
+			.trim()
+			.matchAll(/>(.+?)</gms),
+	]
+		.map((match) => match[1].trim())
+		.filter((match) => match);
+};
+
+export const getVideoPageCount = async (tag: string): Promise<number> => {
 	const response = await (await fetch(BASE_URL + `model/${tag}/videos`, {headers, redirect: "manual"})).text();
 
 	return [...response.matchAll(/<li class="(page_number|page_current)">/gms)].length;
 };
 
-const getVideos = async (tag: string, page: number): Promise<VideoData[]> => {
-	const response = await fetch(BASE_URL + `model/${tag}/videos?page=${page}&o=mr`, {headers, redirect: "manual"});
+export const getVideos = async (tag: string, page: number, order?: Order): Promise<VideoData[]> => {
+	const response = await fetch(BASE_URL + `model/${tag}/videos?page=${page + (order || Order.MostRecent)}`, {headers, redirect: "manual"});
 
 	if (response.status !== 200) throw new Error(`Could not fetch videos from user ${tag}`, {cause: response.statusText});
 
@@ -112,6 +151,8 @@ const getVideos = async (tag: string, page: number): Promise<VideoData[]> => {
 				url: /data-mediabook="(https:\/\/.+?)"/gms.exec(video)![1].trim(),
 				get: async () => await (await fetch(videoData.preview.url, {headers})).arrayBuffer(),
 			},
+			streams: async () => await getStreams(videoData.url),
+			tags: async () => await getTags(videoData.url),
 		};
 
 		allVideoData.push(videoData);
@@ -120,19 +161,19 @@ const getVideos = async (tag: string, page: number): Promise<VideoData[]> => {
 	return allVideoData;
 };
 
-const getAllVideos = async (tag: string): Promise<VideoData[]> => {
+export const getAllVideos = async (tag: string, order?: Order): Promise<VideoData[]> => {
 	const pageCount = await getVideoPageCount(tag);
 
 	let allVideos: VideoData[] = [];
 
 	for (let i = 1; i <= pageCount; i++) {
-		allVideos = allVideos.concat(await getVideos(tag, i));
+		allVideos = allVideos.concat(await getVideos(tag, i, order));
 	}
 
 	return allVideos;
 };
 
-const getAccountData = async (tag: string): Promise<AccountData> => {
+export const getAccountData = async (tag: string): Promise<AccountData> => {
 	const response = await fetch(BASE_URL + `model/${tag}`, {headers, redirect: "manual"});
 
 	if (response.status !== 200) throw new Error(`Could not fetch account data from user ${tag}`, {cause: response.statusText});
@@ -165,4 +206,3 @@ const getAccountData = async (tag: string): Promise<AccountData> => {
 
 	return data;
 };
-
