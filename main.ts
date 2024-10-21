@@ -59,6 +59,11 @@ export type AccountData = {
 	getAllVideos: () => Promise<VideoData[]>;
 };
 
+const extractRegex = (input: string, regex: RegExp): string | undefined => {
+	const match = regex.exec(input);
+	return match ? match[1].trim() : undefined;
+};
+
 const convertShotertenedNumberToFull = (shortened: string): number => {
 	// 1.2M -> 1200000
 
@@ -96,7 +101,7 @@ export const getStreams = async (url: string): Promise<StreamData[]> => {
 
 	return [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
 		.map((match) => JSON.parse(match[1]) as string)
-		.map((url) => ({url, quality: /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms.exec(url)![1].trim()}))
+		.map((url) => ({url, quality: extractRegex(url, /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms)!}))
 		.sort((a, b) => Number(b.quality) - Number(a.quality));
 };
 
@@ -108,8 +113,7 @@ export const getTags = async (url: string): Promise<string[]> => {
 	const html = await response.text();
 
 	return [
-		.../<p>Categories&nbsp;<\/p>(.+?)<div/gms
-			.exec(html)![1]
+		...extractRegex(html, /<p>Categories&nbsp;<\/p>(.+?)<div/gms)!
 			.trim()
 			.matchAll(/>(.+?)</gms),
 	]
@@ -129,7 +133,7 @@ export const getVideos = async (tag: string, page: number, order?: Order): Promi
 	if (response.status !== 200) throw new Error(`Could not fetch videos from user ${tag}`, {cause: response.statusText});
 
 	const html = await response.text();
-	const videosElement = /<ul class="videos row-5-thumbs" id="mostRecentVideosSection">(.+?)<\/ul>/gms.exec(html)![1];
+	const videosElement = extractRegex(html, /<ul class="videos row-5-thumbs" id="mostRecentVideosSection">(.+?)<\/ul>/gms)!;
 	const videos = [...videosElement.matchAll(/<li class="pcVideoListItem.+?videoBox.+?".+?<\/li>/gms)];
 
 	const allVideoData: VideoData[] = [];
@@ -138,21 +142,21 @@ export const getVideos = async (tag: string, page: number, order?: Order): Promi
 		const video = videoInArray[0].trim();
 
 		const videoData: VideoData = {
-			title: /alt="(.+?)"/gms.exec(video)![1].trim(),
-			url: BASE_URL + /href="\/([^"]+)"/gms.exec(video)![1].trim(),
-			views: convertShotertenedNumberToFull(/<var>(.+?)<\/var>/gms.exec(video)![1].trim()),
-			likeRatio: Number(/div class="value">(.+?)</gms.exec(video)![1].trim().replace("%", "")) / 100,
-			duration: convertDurationStringToSeconds(/<var class="duration">(.+?)</gms.exec(video)![1].trim()),
+			title: extractRegex(video, /alt="(.+?)"/gms)!,
+			url: BASE_URL + extractRegex(video, /href="\/([^"]+)"/gms)!,
+			views: convertShotertenedNumberToFull(extractRegex(video, /<var>(.+?)<\/var>/gms)!),
+			likeRatio: Number(extractRegex(video, /div class="value">(.+?)</gms)!.replace("%", "")) / 100,
+			duration: convertDurationStringToSeconds(extractRegex(video, /<var class="duration">(.+?)/gms)!),
 			thumbnail: {
-				url: /src="(https:\/\/.+?)"/gms.exec(video)![1].trim(),
-				get: async () => await (await fetch(videoData.thumbnail.url, {headers})).arrayBuffer(),
+				url: extractRegex(video, /src="(https:\/\/.+?)"/gms)!,
+				get: async () => await (await fetch(extractRegex(video, /src="(https:\/\/.+?)"/gms)!, {headers})).arrayBuffer(),
 			},
 			preview: {
-				url: /data-mediabook="(https:\/\/.+?)"/gms.exec(video)![1].trim(),
-				get: async () => await (await fetch(videoData.preview.url, {headers})).arrayBuffer(),
+				url: extractRegex(video, /data-mediabook="(https:\/\/.+?)"/gms)!,
+				get: async () => await (await fetch(extractRegex(video, /data-mediabook="(https:\/\/.+?)"/gms)!, {headers})).arrayBuffer(),
 			},
-			streams: async () => await getStreams(videoData.url),
-			tags: async () => await getTags(videoData.url),
+			streams: async () => await getStreams(BASE_URL + extractRegex(video, /href="\/([^"]+)"/gms)!),
+			tags: async () => await getTags(BASE_URL + extractRegex(video, /href="\/([^"]+)"/gms)!),
 		};
 
 		allVideoData.push(videoData);
@@ -182,23 +186,23 @@ export const getAccountData = async (tag: string): Promise<AccountData> => {
 
 	const data: AccountData = {
 		tag,
-		username: /<h1 itemprop="name">\n(.+)<\/h1>/gm.exec(html)![1].trim(),
-		description: /<section class="aboutMeSection sectionDimensions ">.*?<\/div>.+?<div>(.+?)<\/div>/gms.exec(html)![1].trim(),
+		username: extractRegex(html, /<h1 itemprop="name">\n(.+)<\/h1>/gm)!,
+		description: extractRegex(html, /<section class="aboutMeSection sectionDimensions ">.*?<\/div>.+?<div>(.+?)<\/div>/gms)!,
 		url: BASE_URL + `model/${tag}`,
 		avatar: {
-			url: /<img id="getAvatar".+src="([^"]+)"/g.exec(html)![1].trim(),
+			url: extractRegex(html, /<img id="getAvatar".+src="([^"]+)"/g)!,
 			get: async () => await (await fetch(data.avatar.url, {headers})).arrayBuffer(),
 		},
 		banner: {
-			url: /<img id="coverPictureDefault".+src="([^"]+)"/g.exec(html)![1].trim(),
+			url: extractRegex(html, /<img id="coverPictureDefault".+src="([^"]+)"/g)!,
 			get: async () => await (await fetch(data.banner.url, {headers})).arrayBuffer(),
 		},
-		rank: Number(/<div class="infoBox">\n.+\n([^<]+)/gm.exec(html)![1].trim()),
-		views: Number(/<div class="tooltipTrig infoBox videoViews" data-title="Video views:([^"]+)/gm.exec(html)![1].trim().replaceAll(",", "")),
-		subscribers: Number(/<div class="tooltipTrig infoBox" data-title="Subscribers:([^"]+)/gm.exec(html)![1].trim().replaceAll(",", "")),
-		gender: /<span itemprop="gender" class="smallInfo">\n(.+)<\/span>/gm.exec(html)![1].trim().toLowerCase() as AccountData["gender"],
-		location: /City and Country:\n.+<\/span>\n.+<span itemprop="" class="smallInfo">\n(.+)<\/span>/gm.exec(html)![1].trim(),
-		birthplace: /<span itemprop="birthPlace" class="smallInfo">\n(.+)<\/span>/gm.exec(html)![1].trim(),
+		rank: Number(extractRegex(html, /<div class="infoBox">\n.+\n([^<]+)/gm)!),
+		views: Number(extractRegex(html, /<div class="tooltipTrig infoBox videoViews" data-title="Video views:([^"]+)/gm)!.replaceAll(",", "")),
+		subscribers: Number(extractRegex(html, /<div class="tooltipTrig infoBox" data-title="Subscribers:([^"]+)/gm)!.replaceAll(",", "")),
+		gender: extractRegex(html, /<span itemprop="gender" class="smallInfo">\n(.+)<\/span>/gm)!.toLowerCase() as AccountData["gender"],
+		location: extractRegex(html, /City and Country:\n.+<\/span>\n.+<span itemprop="" class="smallInfo">\n(.+)<\/span>/gm)!,
+		birthplace: extractRegex(html, /<span itemprop="birthPlace" class="smallInfo">\n(.+)<\/span>/gm)!,
 		getVideoPageCount: async () => await getVideoPageCount(tag),
 		getVideos: async (page: number) => await getVideos(tag, page),
 		getAllVideos: async () => await getAllVideos(tag),
