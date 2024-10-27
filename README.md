@@ -1,4 +1,4 @@
-# ![PornHub](https://ei.phncdn.com/www-static/images/pornhub_logo_straight.svg?cache=2024102101) API
+# PornHub API
 
 This is a Deno module allowing you to interact with the famous adult website https://pornhub.com.
 
