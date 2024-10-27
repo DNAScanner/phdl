@@ -93,7 +93,7 @@ const convertDurationStringToSeconds = (duration: string): number => {
 };
 
 export const getStreams = async (url: string): Promise<StreamData[]> => {
-	const response = await fetch(url, {headers, redirect: "manual"});
+	const response = await fetch(url, {headers});
 
 	if (response.status !== 200) throw new Error(`Could not fetch streams from url ${url}`, {cause: response.statusText});
 
@@ -106,7 +106,7 @@ export const getStreams = async (url: string): Promise<StreamData[]> => {
 };
 
 export const getTags = async (url: string): Promise<string[]> => {
-	const response = await fetch(url, {headers, redirect: "manual"});
+	const response = await fetch(url, {headers});
 
 	if (response.status !== 200) throw new Error(`Could not fetch tags from url ${url}`, {cause: response.statusText});
 
@@ -122,13 +122,13 @@ export const getTags = async (url: string): Promise<string[]> => {
 };
 
 export const getVideoPageCount = async (tag: string): Promise<number> => {
-	const response = await (await fetch(BASE_URL + `model/${tag}/videos`, {headers, redirect: "manual"})).text();
+	const response = await (await fetch(BASE_URL + `model/${tag}/videos`, {headers})).text();
 
-	return [...response.matchAll(/<li class="(page_number|page_current)">/gms)].length;
+	return [...response.matchAll(/<li class="(page_number|page_current)">/gms)].length || 1;
 };
 
 export const getVideos = async (tag: string, page: number, order?: Order): Promise<VideoData[]> => {
-	const response = await fetch(BASE_URL + `model/${tag}/videos?page=${page + (order || Order.MostRecent)}`, {headers, redirect: "manual"});
+	const response = await fetch(BASE_URL + `model/${tag}/videos?page=${page + (order || Order.MostRecent)}`, {headers});
 
 	if (response.status !== 200) throw new Error(`Could not fetch videos from user ${tag}`, {cause: response.statusText});
 
@@ -178,7 +178,7 @@ export const getAllVideos = async (tag: string, order?: Order): Promise<VideoDat
 };
 
 export const getAccountData = async (tag: string): Promise<AccountData> => {
-	const response = await fetch(BASE_URL + `model/${tag}`, {headers, redirect: "manual"});
+	const response = await fetch(BASE_URL + `model/${tag}`, {headers});
 
 	if (response.status !== 200) throw new Error(`Could not fetch account data from user ${tag}`, {cause: response.statusText});
 
