@@ -92,6 +92,19 @@ const convertDurationStringToSeconds = (duration: string): number => {
 	return seconds;
 };
 
+/**
+ * Fetches stream data from the given URL and returns an array of stream information.
+ *
+ * @param url - The URL to fetch the stream data from.
+ * @returns A promise that resolves to an array of `StreamData` objects.
+ * @throws Will throw an error if the response status is not 200.
+ *
+ * The function performs the following steps:
+ * 1. Fetches the HTML content from the provided URL.
+ * 2. Extracts all HLS video URLs from the HTML using a regular expression.
+ * 3. Parses the extracted URLs and maps them to `StreamData` objects containing the URL and quality.
+ * 4. Sorts the `StreamData` objects by quality in descending order.
+ */
 export const getStreams = async (url: string): Promise<StreamData[]> => {
 	const response = await fetch(url, {headers});
 
@@ -105,6 +118,13 @@ export const getStreams = async (url: string): Promise<StreamData[]> => {
 		.sort((a, b) => Number(b.quality) - Number(a.quality));
 };
 
+/**
+ * Fetches the HTML content from the given URL and extracts tags from it.
+ *
+ * @param url - The URL to fetch the HTML content from.
+ * @returns A promise that resolves to an array of tags extracted from the HTML content.
+ * @throws Will throw an error if the fetch operation fails or the response status is not 200.
+ */
 export const getTags = async (url: string): Promise<string[]> => {
 	const response = await fetch(url, {headers});
 
@@ -121,12 +141,33 @@ export const getTags = async (url: string): Promise<string[]> => {
 		.filter((match) => match);
 };
 
+/**
+ * Fetches the number of video pages for a given tag.
+ *
+ * @param {string} tag - The tag to search for videos.
+ * @returns {Promise<number>} - A promise that resolves to the number of video pages.
+ *
+ * @example
+ * ```typescript
+ * const pageCount = await getVideoPageCount('exampleTag');
+ * console.log(pageCount); // Outputs the number of pages
+ * ```
+ */
 export const getVideoPageCount = async (tag: string): Promise<number> => {
 	const response = await (await fetch(BASE_URL + `model/${tag}/videos`, {headers})).text();
 
 	return [...response.matchAll(/<li class="(page_number|page_current)">/gms)].length || 1;
 };
 
+/**
+ * Fetches videos based on the provided tag and page number, with an optional order.
+ *
+ * @param {string} tag - The tag to filter videos by.
+ * @param {number} page - The page number to fetch.
+ * @param {Order} [order] - The order in which to fetch videos (default is Order.MostRecent).
+ * @returns {Promise<VideoData[]>} A promise that resolves to an array of video data.
+ * @throws {Error} If the response status is not 200, an error is thrown with the status text as the cause.
+ */
 export const getVideos = async (tag: string, page: number, order?: Order): Promise<VideoData[]> => {
 	const response = await fetch(BASE_URL + `model/${tag}/videos?page=${page + (order || Order.MostRecent)}`, {headers});
 
@@ -165,6 +206,13 @@ export const getVideos = async (tag: string, page: number, order?: Order): Promi
 	return allVideoData;
 };
 
+/**
+ * Retrieves all videos associated with a specific tag, optionally ordered by a specified criterion.
+ *
+ * @param {string} tag - The tag used to filter videos.
+ * @param {Order} [order] - Optional parameter to specify the order of the videos.
+ * @returns {Promise<VideoData[]>} A promise that resolves to an array of video data.
+ */
 export const getAllVideos = async (tag: string, order?: Order): Promise<VideoData[]> => {
 	const pageCount = await getVideoPageCount(tag);
 
@@ -177,6 +225,30 @@ export const getAllVideos = async (tag: string, order?: Order): Promise<VideoDat
 	return allVideos;
 };
 
+/**
+ * Fetches account data for a given user tag.
+ *
+ * @param {string} tag - The user tag to fetch account data for.
+ * @returns {Promise<AccountData>} A promise that resolves to the account data.
+ * @throws {Error} If the response status is not 200, an error is thrown with the status text as the cause.
+ *
+ * The returned `AccountData` object contains the following properties:
+ * - `tag`: The user tag.
+ * - `username`: The username extracted from the HTML.
+ * - `description`: The description extracted from the HTML.
+ * - `url`: The URL of the user's account.
+ * - `avatar`: An object containing the avatar URL and a method to fetch the avatar image as an ArrayBuffer.
+ * - `banner`: An object containing the banner URL and a method to fetch the banner image as an ArrayBuffer.
+ * - `rank`: The rank of the user.
+ * - `views`: The number of video views.
+ * - `subscribers`: The number of subscribers.
+ * - `gender`: The gender of the user.
+ * - `location`: The location of the user.
+ * - `birthplace`: The birthplace of the user.
+ * - `getVideoPageCount`: A method to fetch the number of video pages.
+ * - `getVideos`: A method to fetch videos for a given page.
+ * - `getAllVideos`: A method to fetch all videos.
+ */
 export const getAccountData = async (tag: string): Promise<AccountData> => {
 	const response = await fetch(BASE_URL + `model/${tag}`, {headers});
 
