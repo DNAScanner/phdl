@@ -6,7 +6,7 @@ const BASE_URL = "https://www.pornhub.com/";
 
 /**
  * Represents the data for a stream.
- * 
+ *
  * @typedef {Object} StreamData
  * @property {string} url - The URL of the stream.
  * @property {string} quality - The quality of the stream.
@@ -18,7 +18,7 @@ export type StreamData = {
 
 /**
  * Enum representing different order types for sorting.
- * 
+ *
  * @enum {string}
  * @property {string} MostViewed - Sort by most viewed items.
  * @property {string} MostRecent - Sort by most recent items.
@@ -36,7 +36,7 @@ export enum Order {
 
 /**
  * Represents the data of a video.
- * 
+ *
  * @typedef {Object} VideoData
  * @property {string} title - The title of the video.
  * @property {string} url - The URL of the video.
@@ -210,22 +210,24 @@ const convertDurationStringToSeconds = (duration: string): number => {
 };
 
 /**
+ * Generates a URL for the account model of the given username.
+ *
+ * @param {string} username - The username for which to generate the account URL.
+ * @returns {string} The generated account URL.
+ */
+export const generateAccountUrl = (username: string): string => BASE_URL + `model/${username}`;
+
+/**
  * Fetches stream data from the given URL and returns an array of stream information.
  *
- * @param url - The URL to fetch the stream data from.
- * @returns A promise that resolves to an array of `StreamData` objects.
- * @throws Will throw an error if the response status is not 200.
- *
- * The function performs the following steps:
- * 1. Fetches the HTML content from the provided URL.
- * 2. Extracts all HLS video URLs from the HTML using a regular expression.
- * 3. Parses the extracted URLs and maps them to `StreamData` objects containing the URL and quality.
- * 4. Sorts the `StreamData` objects by quality in descending order.
+ * @param videoUrl - The URL of the video.
+ * @returns {Promise<StreamData[]>} An array of all streams.
+ * @throws {Error} Throws an error if the video does not exist.
  */
-export const getStreams = async (url: string): Promise<StreamData[]> => {
-	const response = await fetch(url, {headers});
+export const getStreams = async (videoUrl: string): Promise<StreamData[]> => {
+	const response = await fetch(videoUrl, {headers});
 
-	if (response.status !== 200) throw new Error(`Could not fetch streams from url ${url}`, {cause: response.statusText});
+	if (response.status !== 200) throw new Error(`Video does not exist (${videoUrl})`, {cause: response.statusText});
 
 	const html = await response.text();
 
@@ -238,14 +240,14 @@ export const getStreams = async (url: string): Promise<StreamData[]> => {
 /**
  * Fetches the HTML content from the given URL and extracts tags from it.
  *
- * @param url - The URL to fetch the HTML content from.
- * @returns A promise that resolves to an array of tags extracted from the HTML content.
- * @throws Will throw an error if the fetch operation fails or the response status is not 200.
+ * @param videoUrl - The URL of the video.
+ * @returns {Promise<string[]>} An array of tags.
+ * @throws {Error} Throws an error if the video does not exist.
  */
-export const getTags = async (url: string): Promise<string[]> => {
-	const response = await fetch(url, {headers});
+export const getTags = async (videoUrl: string): Promise<string[]> => {
+	const response = await fetch(videoUrl, {headers});
 
-	if (response.status !== 200) throw new Error(`Could not fetch tags from url ${url}`, {cause: response.statusText});
+	if (response.status !== 200) throw new Error(`Video does not exist (${videoUrl})`, {cause: response.statusText});
 
 	const html = await response.text();
 
@@ -261,34 +263,32 @@ export const getTags = async (url: string): Promise<string[]> => {
 /**
  * Fetches the number of video pages for a given tag.
  *
- * @param {string} tag - The tag to search for videos.
- * @returns {Promise<number>} - A promise that resolves to the number of video pages.
- *
- * @example
- * ```typescript
- * const pageCount = await getVideoPageCount('exampleTag');
- * console.log(pageCount); // Outputs the number of pages
- * ```
+ * @param {string} accountUrl - The URL of the account.
+ * @returns {Promise<number>} Represents the number of video pages.
+ * @throws {Error} Throws an error, if the account does not exist.
  */
-export const getVideoPageCount = async (tag: string): Promise<number> => {
-	const response = await (await fetch(BASE_URL + `model/${tag}/videos`, {headers})).text();
+export const getVideoPageCount = async (accountUrl: string): Promise<number> => {
+	const response = await fetch(accountUrl + `/videos`, {headers});
 
-	return [...response.matchAll(/<li class="(page_number|page_current)">/gms)].length || 1;
+	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${accountUrl})`, {cause: response.statusText});
+
+	return [...(await response.text()).matchAll(/<li class="(page_number|page_current)">/gms)].length || 1;
 };
 
 /**
- * Fetches videos based on the provided tag and page number, with an optional order.
+ * Fetches videos based from a page on an account URL.
  *
- * @param {string} tag - The tag to filter videos by.
- * @param {number} page - The page number to fetch.
- * @param {Order} [order] - The order in which to fetch videos (default is Order.MostRecent).
- * @returns {Promise<VideoData[]>} A promise that resolves to an array of video data.
- * @throws {Error} If the response status is not 200, an error is thrown with the status text as the cause.
+ * @param {string} accountUrl - The URL of the account.
+ * @param {number} page - The page number to fetch videos from.
+ * @param {Order} [order] - Optional parameter to specify the order of the videos.
+ * @returns {Promise<VideoData[]>} An array of the video data.
+ * @throws {Error} Throws an error if the page is out of bounds or the account does not exist.
  */
-export const getVideos = async (tag: string, page: number, order?: Order): Promise<VideoData[]> => {
-	const response = await fetch(BASE_URL + `model/${tag}/videos?page=${page + (order || Order.MostRecent)}`, {headers});
+export const getVideos = async (accountUrl: string, page: number, order?: Order): Promise<VideoData[]> => {
+	const response = await fetch(accountUrl + `/videos?page=${page + (order || Order.MostRecent)}`, {headers});
 
-	if (response.status !== 200) throw new Error(`Could not fetch videos from user ${tag}`, {cause: response.statusText});
+	if (response.status !== 200) throw new Error(`This page is out of bounds (${accountUrl}/videos?page=${page + (order || Order.MostRecent)})`, {cause: response.statusText});
+	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${accountUrl})`, {cause: response.statusText});
 
 	const html = await response.text();
 	const videosElement = extractRegex(html, /<ul class="videos row-5-thumbs" id="mostRecentVideosSection">(.+?)<\/ul>/gms)!;
@@ -324,19 +324,20 @@ export const getVideos = async (tag: string, page: number, order?: Order): Promi
 };
 
 /**
- * Retrieves all videos associated with a specific tag, optionally ordered by a specified criterion.
+ * Fetches videos of all pages of the account.
  *
- * @param {string} tag - The tag used to filter videos.
+ * @param {string} accountUrl - The URL of the account.
  * @param {Order} [order] - Optional parameter to specify the order of the videos.
- * @returns {Promise<VideoData[]>} A promise that resolves to an array of video data.
+ * @returns {Promise<VideoData[]>} An array of all video data.
+ * @throws {Error} Throws an error if the account does not exist.
  */
-export const getAllVideos = async (tag: string, order?: Order): Promise<VideoData[]> => {
-	const pageCount = await getVideoPageCount(tag);
+export const getAllVideos = async (accountUrl: string, order?: Order): Promise<VideoData[]> => {
+	const pageCount = await getVideoPageCount(accountUrl);
 
 	let allVideos: VideoData[] = [];
 
 	for (let i = 1; i <= pageCount; i++) {
-		allVideos = allVideos.concat(await getVideos(tag, i, order));
+		allVideos = allVideos.concat(await getVideos(accountUrl, i, order));
 	}
 
 	return allVideos;
@@ -345,39 +346,22 @@ export const getAllVideos = async (tag: string, order?: Order): Promise<VideoDat
 /**
  * Fetches account data for a given user tag.
  *
- * @param {string} tag - The user tag to fetch account data for.
- * @returns {Promise<AccountData>} A promise that resolves to the account data.
- * @throws {Error} If the response status is not 200, an error is thrown with the status text as the cause.
- *
- * The returned `AccountData` object contains the following properties:
- * - `tag`: The user tag.
- * - `username`: The username extracted from the HTML.
- * - `description`: The description extracted from the HTML.
- * - `url`: The URL of the user's account.
- * - `avatar`: An object containing the avatar URL and a method to fetch the avatar image as an ArrayBuffer.
- * - `banner`: An object containing the banner URL and a method to fetch the banner image as an ArrayBuffer.
- * - `rank`: The rank of the user.
- * - `views`: The number of video views.
- * - `subscribers`: The number of subscribers.
- * - `gender`: The gender of the user.
- * - `location`: The location of the user.
- * - `birthplace`: The birthplace of the user.
- * - `getVideoPageCount`: A method to fetch the number of video pages.
- * - `getVideos`: A method to fetch videos for a given page.
- * - `getAllVideos`: A method to fetch all videos.
+ * @param {string} accountUrl - The URL of the account.
+ * @returns {Promise<AccountData>} The account data.
+ * @throws {Error} Throws an error if the account does not exist.
  */
-export const getAccountData = async (tag: string): Promise<AccountData> => {
-	const response = await fetch(BASE_URL + `model/${tag}`, {headers});
+export const getAccountData = async (accountUrl: string): Promise<AccountData> => {
+	const response = await fetch(accountUrl, {headers});
 
-	if (response.status !== 200) throw new Error(`Could not fetch account data from user ${tag}`, {cause: response.statusText});
+	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${accountUrl})`, {cause: response.statusText});
 
 	const html = await response.text();
 
 	const data: AccountData = {
-		tag,
+		tag: accountUrl,
 		username: extractRegex(html, /<h1 itemprop="name">\n(.+)<\/h1>/gm)!,
 		description: extractRegex(html, /<section class="aboutMeSection sectionDimensions ">.*?<\/div>.+?<div>(.+?)<\/div>/gms)!,
-		url: BASE_URL + `model/${tag}`,
+		url: response.url,
 		avatar: {
 			url: extractRegex(html, /<img id="getAvatar".+src="([^"]+)"/g)!,
 			get: async () => await (await fetch(data.avatar.url, {headers})).arrayBuffer(),
@@ -392,9 +376,9 @@ export const getAccountData = async (tag: string): Promise<AccountData> => {
 		gender: extractRegex(html, /<span itemprop="gender" class="smallInfo">\n(.+)<\/span>/gm)!.toLowerCase() as AccountData["gender"],
 		location: extractRegex(html, /City and Country:\n.+<\/span>\n.+<span itemprop="" class="smallInfo">\n(.+)<\/span>/gm)!,
 		birthplace: extractRegex(html, /<span itemprop="birthPlace" class="smallInfo">\n(.+)<\/span>/gm)!,
-		getVideoPageCount: async () => await getVideoPageCount(tag),
-		getVideos: async (page: number) => await getVideos(tag, page),
-		getAllVideos: async () => await getAllVideos(tag),
+		getVideoPageCount: async () => await getVideoPageCount(accountUrl),
+		getVideos: async (page: number) => await getVideos(accountUrl, page),
+		getAllVideos: async () => await getAllVideos(accountUrl),
 	};
 
 	return data;
