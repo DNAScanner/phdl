@@ -373,7 +373,7 @@ export const getAccountData = async (accountUrl: string): Promise<AccountData> =
 	const html = await response.text();
 
 	const data: AccountData = {
-		tag: accountUrl,
+		tag: accountUrl.split("/").pop()!,
 		username: extractRegex(html, /<h1 itemprop="name">\n(.+)<\/h1>/gm)!,
 		description: extractRegex(html, /<section class="aboutMeSection sectionDimensions ">.*?<\/div>.+?<div>(.+?)<\/div>/gms)!,
 		url: response.url,
