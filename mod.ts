@@ -34,23 +34,14 @@ export enum Order {
 	Best = "",
 }
 
+export type VideoDetails = {
+	streams: StreamData[];
+	tags: string[];
+	dateAdded: string;
+};
+
 /**
- * Represents the data of a video.
- *
- * @typedef {Object} VideoData
- * @property {string} title - The title of the video.
- * @property {string} url - The URL of the video.
- * @property {number} views - The number of views the video has.
- * @property {number} likeRatio - The like ratio of the video.
- * @property {number} duration - The duration of the video in seconds.
- * @property {Object} thumbnail - The thumbnail of the video.
- * @property {string} thumbnail.url - The URL of the thumbnail image.
- * @property {Function} thumbnail.get - A function that returns a promise resolving to the thumbnail image as an ArrayBuffer.
- * @property {Object} preview - The preview of the video.
- * @property {string} preview.url - The URL of the preview image.
- * @property {Function} preview.get - A function that returns a promise resolving to the preview image as an ArrayBuffer.
- * @property {Function} streams - A function that returns a promise resolving to an array of StreamData objects.
- * @property {Function} tags - A function that returns a promise resolving to an array of tags associated with the video.
+ * Represents the data associated with a video.
  */
 export type VideoData = {
 	title: string;
@@ -66,8 +57,7 @@ export type VideoData = {
 		url: string;
 		get: () => Promise<ArrayBuffer>;
 	};
-	streams: () => Promise<StreamData[]>;
-	tags: () => Promise<string[]>;
+	details: () => Promise<VideoDetails>;
 };
 
 /**
@@ -260,6 +250,32 @@ export const getTags = async (videoUrl: string): Promise<string[]> => {
 		.filter((match) => match);
 };
 
+export const getDetails = async (videoUrl: string): Promise<VideoDetails> => {
+	const response = await fetch(videoUrl, {headers});
+
+	if (response.status !== 200) throw new Error(`Video does not exist (${videoUrl})`, {cause: response.statusText});
+
+	const html = await response.text();
+
+	const streams: StreamData[] = [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
+		.map((match) => JSON.parse(match[1]) as string)
+		.map((url) => ({url, quality: extractRegex(url, /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms)!}))
+		.sort((a, b) => Number(b.quality) - Number(a.quality));
+
+	const tags = [
+		...extractRegex(html, /<p>Categories&nbsp;<\/p>(.+?)<div/gms)!
+			.trim()
+			.matchAll(/>(.+?)</gms),
+	]
+		.map((match) => match[1].trim())
+		.filter((match) => match);
+
+	const dateAdded = extractRegex(html, /'video_date_published' : '(.+?)'/gms)!
+		.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+
+	return {streams, tags, dateAdded};
+}
+
 /**
  * Fetches the number of video pages for a given tag.
  *
@@ -304,7 +320,7 @@ export const getVideos = async (accountUrl: string, page: number, order?: Order)
 			url: BASE_URL + extractRegex(video, /href="\/([^"]+)"/gms)!,
 			views: convertShotertenedNumberToFull(extractRegex(video, /<var>(.+?)<\/var>/gms)!),
 			likeRatio: Number(extractRegex(video, /div class="value">(.+?)</gms)!.replace("%", "")) / 100,
-			duration: convertDurationStringToSeconds(extractRegex(video, /<var class="duration">(.+?)/gms)!),
+			duration: convertDurationStringToSeconds(extractRegex(video, /<var class="duration">(.+?)</gms)!),
 			thumbnail: {
 				url: extractRegex(video, /src="(https:\/\/.+?)"/gms)!,
 				get: async () => await (await fetch(extractRegex(video, /src="(https:\/\/.+?)"/gms)!, {headers})).arrayBuffer(),
@@ -313,8 +329,7 @@ export const getVideos = async (accountUrl: string, page: number, order?: Order)
 				url: extractRegex(video, /data-mediabook="(https:\/\/.+?)"/gms)!,
 				get: async () => await (await fetch(extractRegex(video, /data-mediabook="(https:\/\/.+?)"/gms)!, {headers})).arrayBuffer(),
 			},
-			streams: async () => await getStreams(BASE_URL + extractRegex(video, /href="\/([^"]+)"/gms)!),
-			tags: async () => await getTags(BASE_URL + extractRegex(video, /href="\/([^"]+)"/gms)!),
+			details: async () => await getDetails(videoData.url),
 		};
 
 		allVideoData.push(videoData);

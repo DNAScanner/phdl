@@ -9,19 +9,16 @@ Using the API or the website itself is strictly prohibited for people under the 
 ## Example usage
 
 ```ts
-import {getAccountData, getVideoPageCount, getVideos, getAllVideos, getStreams, getTags} from "https://raw.githubusercontent.com/DNAScanner/phdl/refs/heads/main/main.ts";
+import {generateAccountUrl, getAccountData} from "jsr:@dnascanner/phdl";
 
-// Get general account information
-const accountData = await getAccountData("mira-david");
+// Get basic account data
+const accountData = await getAccountData(generateAccountUrl("mira-david"));
 
-// Get first video on second video page
-const video = (await accountData.getVideos(2))[0];
+// Now, get an array of all videos on page 2
+const videos = await accountData.getVideos(2);
 
-// Output the title and video url
-// console.log(video.title + "\n" + video.url);
+// Then, log the url to the best stream of the first video
+const details = await videos[0].details();
 
-// Get the highest quality stream url
-const stream = (await video.streams())[0];
-
-console.log(stream.url);
+console.log(details.streams[0].url);
 ```
