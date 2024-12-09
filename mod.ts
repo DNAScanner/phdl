@@ -2,7 +2,7 @@ const headers = {
 	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
 };
 
-const BASE_URL = "https://www.pornhub.com/";
+const BASE_URL = "https://www.pornhub.com";
 
 /**
  * Represents the data for a stream.
@@ -34,7 +34,14 @@ export enum Order {
 	Best = "",
 }
 
-export type VideoDetails = {
+export type Video = {
+	title: string;
+	url: string;
+	id: string;
+	views: number;
+	likeRatio: number;
+	duration: number;
+	thumbnail: string;
 	streams: StreamData[];
 	tags: string[];
 	dateAdded: string;
@@ -43,27 +50,22 @@ export type VideoDetails = {
 /**
  * Represents the data associated with a video.
  */
-export type VideoData = {
+export type AccountVideo = {
 	title: string;
 	url: string;
+	id: string;
 	views: number;
 	likeRatio: number;
 	duration: number;
-	thumbnail: {
-		url: string;
-		get: () => Promise<ArrayBuffer>;
-	};
-	preview: {
-		url: string;
-		get: () => Promise<ArrayBuffer>;
-	};
-	details: () => Promise<VideoDetails>;
+	thumbnail: string;
+	preview: string;
+	getDetails: () => Promise<Video>;
 };
 
 /**
  * Represents the data associated with an account.
  */
-export type AccountData = {
+export type Account = {
 	/**
 	 * The tag associated with the account.
 	 */
@@ -87,34 +89,12 @@ export type AccountData = {
 	/**
 	 * The avatar information of the account.
 	 */
-	avatar: {
-		/**
-		 * The URL of the avatar image.
-		 */
-		url: string;
-
-		/**
-		 * Retrieves the avatar image as an ArrayBuffer.
-		 * @returns A promise that resolves to an ArrayBuffer containing the avatar image.
-		 */
-		get: () => Promise<ArrayBuffer>;
-	};
+	avatar: string;
 
 	/**
 	 * The banner information of the account.
 	 */
-	banner: {
-		/**
-		 * The URL of the banner image.
-		 */
-		url: string;
-
-		/**
-		 * Retrieves the banner image as an ArrayBuffer.
-		 * @returns A promise that resolves to an ArrayBuffer containing the banner image.
-		 */
-		get: () => Promise<ArrayBuffer>;
-	};
+	banner: string;
 
 	/**
 	 * The rank of the account.
@@ -157,13 +137,13 @@ export type AccountData = {
 	 * @param page - The page number to retrieve videos from.
 	 * @returns A promise that resolves to an array of VideoData objects.
 	 */
-	getVideos: (page: number) => Promise<VideoData[]>;
+	getVideos: (page: number) => Promise<AccountVideo[]>;
 
 	/**
 	 * Retrieves all videos associated with the account.
 	 * @returns A promise that resolves to an array of all VideoData objects.
 	 */
-	getAllVideos: () => Promise<VideoData[]>;
+	getAllVideos: () => Promise<AccountVideo[]>;
 };
 
 const extractRegex = (input: string, regex: RegExp): string | undefined => {
@@ -250,10 +230,10 @@ export const getTags = async (videoUrl: string): Promise<string[]> => {
 		.filter((match) => match);
 };
 
-export const getDetails = async (videoUrl: string): Promise<VideoDetails> => {
-	const response = await fetch(videoUrl, {headers});
+export const getVideo = async (id: string): Promise<Video> => {
+	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
 
-	if (response.status !== 200) throw new Error(`Video does not exist (${videoUrl})`, {cause: response.statusText});
+	if (response.status !== 200) throw new Error(`Video does not exist (${id})`);
 
 	const html = await response.text();
 
@@ -270,23 +250,33 @@ export const getDetails = async (videoUrl: string): Promise<VideoDetails> => {
 		.map((match) => match[1].trim())
 		.filter((match) => match);
 
-	const dateAdded = extractRegex(html, /'video_date_published' : '(.+?)'/gms)!
-		.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+	const dateAdded = extractRegex(html, /'video_date_published' : '(.+?)'/gms)!.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
 
-	return {streams, tags, dateAdded};
-}
+	return {
+		title: extractRegex(html, /videoTitleOriginal":"(.+?)"/gms)!,
+		url: response.url,
+		id,
+		views: convertShotertenedNumberToFull(extractRegex(html, /<div class="views"><span class="count">(.+?)<\/span>/gms)!),
+		likeRatio: Number(extractRegex(html, /<i class="thumbsUp ph-icon-thumb-up"><\/i><span class="percent">(.+?)<\/span>/gms)?.replaceAll("%", "")) / 100,
+		duration: Number(extractRegex(html, /<meta property="video:duration" content="(.+?)" \/>/gms)),
+		thumbnail: extractRegex(html, /<div id="player.*?<img src="(.+?)"/gms)!,
+		streams,
+		tags,
+		dateAdded,
+	};
+};
 
 /**
  * Fetches the number of video pages for a given tag.
  *
- * @param {string} accountUrl - The URL of the account.
+ * @param {string} tag - The URL of the account.
  * @returns {Promise<number>} Represents the number of video pages.
  * @throws {Error} Throws an error, if the account does not exist.
  */
-export const getVideoPageCount = async (accountUrl: string): Promise<number> => {
-	const response = await fetch(accountUrl + `/videos`, {headers});
+export const getVideoPageCount = async (tag: string): Promise<number> => {
+	const response = await fetch(BASE_URL + "/model/" + tag + `/videos`, {headers});
 
-	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${accountUrl})`, {cause: response.statusText});
+	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
 
 	return [...(await response.text()).matchAll(/<li class="(page_number|page_current)">/gms)].length || 1;
 };
@@ -294,65 +284,60 @@ export const getVideoPageCount = async (accountUrl: string): Promise<number> => 
 /**
  * Fetches videos based from a page on an account URL.
  *
- * @param {string} accountUrl - The URL of the account.
+ * @param {string} tag - The URL of the account.
  * @param {number} page - The page number to fetch videos from.
  * @param {Order} [order] - Optional parameter to specify the order of the videos.
- * @returns {Promise<VideoData[]>} An array of the video data.
+ * @returns {Promise<AccountVideo[]>} An array of the video data.
  * @throws {Error} Throws an error if the page is out of bounds or the account does not exist.
  */
-export const getVideos = async (accountUrl: string, page: number, order?: Order): Promise<VideoData[]> => {
-	const response = await fetch(accountUrl + `/videos?page=${page + (order || Order.MostRecent)}`, {headers});
+export const getVideos = async (tag: string, page: number, order?: Order): Promise<AccountVideo[]> => {
+	const response = await fetch(BASE_URL + "/model/" + tag + `/videos?page=${page + (order || Order.MostRecent)}`, {headers});
 
-	if (response.status !== 200) throw new Error(`This page is out of bounds (${accountUrl}/videos?page=${page + (order || Order.MostRecent)})`, {cause: response.statusText});
-	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${accountUrl})`, {cause: response.statusText});
+	if (response.status !== 200) throw new Error(`This page is out of bounds (${tag} page=${page})`);
+	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
 
 	const html = await response.text();
 	const videosElement = extractRegex(html, /<ul class="videos row-5-thumbs" id="mostRecentVideosSection">(.+?)<\/ul>/gms)!;
 	const videos = [...videosElement.matchAll(/<li class="pcVideoListItem.+?videoBox.+?".+?<\/li>/gms)];
 
-	const allVideoData: VideoData[] = [];
+	const allVideos: AccountVideo[] = [];
 
-	for (const videoInArray of videos) {
-		const video = videoInArray[0].trim();
+	for (const videoOnPage of videos) {
+		const videoHtml = videoOnPage[0].trim();
 
-		const videoData: VideoData = {
-			title: extractRegex(video, /alt="(.+?)"/gms)!,
-			url: BASE_URL + extractRegex(video, /href="\/([^"]+)"/gms)!,
-			views: convertShotertenedNumberToFull(extractRegex(video, /<var>(.+?)<\/var>/gms)!),
-			likeRatio: Number(extractRegex(video, /div class="value">(.+?)</gms)!.replace("%", "")) / 100,
-			duration: convertDurationStringToSeconds(extractRegex(video, /<var class="duration">(.+?)</gms)!),
-			thumbnail: {
-				url: extractRegex(video, /src="(https:\/\/.+?)"/gms)!,
-				get: async () => await (await fetch(extractRegex(video, /src="(https:\/\/.+?)"/gms)!, {headers})).arrayBuffer(),
-			},
-			preview: {
-				url: extractRegex(video, /data-mediabook="(https:\/\/.+?)"/gms)!,
-				get: async () => await (await fetch(extractRegex(video, /data-mediabook="(https:\/\/.+?)"/gms)!, {headers})).arrayBuffer(),
-			},
-			details: async () => await getDetails(videoData.url),
+		const video: AccountVideo = {
+			title: extractRegex(videoHtml, /alt="(.+?)"/gms)!,
+			url: BASE_URL + "/" + extractRegex(videoHtml, /href="\/([^"]+)"/gms)!,
+			id: extractRegex(videoHtml, /data-video-vkey="(.+?)"/gms)!,
+			views: convertShotertenedNumberToFull(extractRegex(videoHtml, /<var>(.+?)<\/var>/gms)!),
+			likeRatio: Number(extractRegex(videoHtml, /div class="value">(.+?)</gms)!.replace("%", "")) / 100,
+			duration: convertDurationStringToSeconds(extractRegex(videoHtml, /<var class="duration">(.+?)</gms)!),
+			thumbnail: extractRegex(videoHtml, /src="(https:\/\/.+?)"/gms)!,
+			preview: extractRegex(videoHtml, /data-mediabook="(https:\/\/.+?)"/gms)!,
+			getDetails: async () => await getVideo(video.id),
 		};
 
-		allVideoData.push(videoData);
+		allVideos.push(video);
 	}
 
-	return allVideoData;
+	return allVideos;
 };
 
 /**
  * Fetches videos of all pages of the account.
  *
- * @param {string} accountUrl - The URL of the account.
+ * @param {string} tag - The URL of the account.
  * @param {Order} [order] - Optional parameter to specify the order of the videos.
- * @returns {Promise<VideoData[]>} An array of all video data.
+ * @returns {Promise<AccountVideo[]>} An array of all video data.
  * @throws {Error} Throws an error if the account does not exist.
  */
-export const getAllVideos = async (accountUrl: string, order?: Order): Promise<VideoData[]> => {
-	const pageCount = await getVideoPageCount(accountUrl);
+export const getAllVideos = async (tag: string, order?: Order): Promise<AccountVideo[]> => {
+	const pageCount = await getVideoPageCount(tag);
 
-	let allVideos: VideoData[] = [];
+	let allVideos: AccountVideo[] = [];
 
 	for (let i = 1; i <= pageCount; i++) {
-		allVideos = allVideos.concat(await getVideos(accountUrl, i, order));
+		allVideos = allVideos.concat(await getVideos(tag, i, order));
 	}
 
 	return allVideos;
@@ -361,39 +346,33 @@ export const getAllVideos = async (accountUrl: string, order?: Order): Promise<V
 /**
  * Fetches account data for a given user tag.
  *
- * @param {string} accountUrl - The URL of the account.
- * @returns {Promise<AccountData>} The account data.
+ * @param {string} tag - The URL of the account.
+ * @returns {Promise<Account>} The account data.
  * @throws {Error} Throws an error if the account does not exist.
  */
-export const getAccountData = async (accountUrl: string): Promise<AccountData> => {
-	const response = await fetch(accountUrl, {headers});
+export const getAccount = async (tag: string): Promise<Account> => {
+	const response = await fetch(BASE_URL + "/model/" + tag, {headers});
 
-	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${accountUrl})`, {cause: response.statusText});
+	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
 
 	const html = await response.text();
 
-	const data: AccountData = {
-		tag: accountUrl.split("/").pop()!,
+	const data: Account = {
+		tag: tag.toLowerCase(),
 		username: extractRegex(html, /<h1 itemprop="name">\n(.+)<\/h1>/gm)!,
 		description: extractRegex(html, /<section class="aboutMeSection sectionDimensions ">.*?<\/div>.+?<div>(.+?)<\/div>/gms)!,
 		url: response.url,
-		avatar: {
-			url: extractRegex(html, /<img id="getAvatar".+src="([^"]+)"/g)!,
-			get: async () => await (await fetch(data.avatar.url, {headers})).arrayBuffer(),
-		},
-		banner: {
-			url: extractRegex(html, /<img id="coverPictureDefault".+src="([^"]+)"/g)!,
-			get: async () => await (await fetch(data.banner.url, {headers})).arrayBuffer(),
-		},
+		avatar: extractRegex(html, /<img id="getAvatar".+src="([^"]+)"/g)!,
+		banner: extractRegex(html, /<img id="coverPictureDefault".+src="([^"]+)"/g)!,
 		rank: Number(extractRegex(html, /<div class="infoBox">\n.+\n([^<]+)/gm)!),
 		views: Number(extractRegex(html, /<div class="tooltipTrig infoBox videoViews" data-title="Video views:([^"]+)/gm)!.replaceAll(",", "")),
 		subscribers: Number(extractRegex(html, /<div class="tooltipTrig infoBox" data-title="Subscribers:([^"]+)/gm)!.replaceAll(",", "")),
-		gender: extractRegex(html, /<span itemprop="gender" class="smallInfo">\n(.+)<\/span>/gm)!.toLowerCase() as AccountData["gender"],
+		gender: extractRegex(html, /<span itemprop="gender" class="smallInfo">\n(.+)<\/span>/gm)!.toLowerCase() as Account["gender"],
 		location: extractRegex(html, /City and Country:\n.+<\/span>\n.+<span itemprop="" class="smallInfo">\n(.+)<\/span>/gm)!,
 		birthplace: extractRegex(html, /<span itemprop="birthPlace" class="smallInfo">\n(.+)<\/span>/gm)!,
-		getVideoPageCount: async () => await getVideoPageCount(accountUrl),
-		getVideos: async (page: number) => await getVideos(accountUrl, page),
-		getAllVideos: async () => await getAllVideos(accountUrl),
+		getVideoPageCount: async () => await getVideoPageCount(tag),
+		getVideos: async (page: number) => await getVideos(tag, page),
+		getAllVideos: async () => await getAllVideos(tag),
 	};
 
 	return data;
