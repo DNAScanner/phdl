@@ -42,6 +42,12 @@ export type Video = {
 	likeRatio: number;
 	duration: number;
 	thumbnail: string;
+	creator : {
+		tag: string;
+		url: string;
+		avatar: string;
+		getDetails: () => Promise<Account>;
+	}
 	streams: StreamData[];
 	tags: string[];
 	dateAdded: string;
@@ -252,6 +258,8 @@ export const getVideo = async (id: string): Promise<Video> => {
 
 	const dateAdded = extractRegex(html, /'video_date_published' : '(.+?)'/gms)!.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
 
+	Deno.writeTextFileSync("test.html", html);
+
 	return {
 		title: extractRegex(html, /videoTitleOriginal":"(.+?)"/gms)!,
 		url: response.url,
@@ -260,6 +268,12 @@ export const getVideo = async (id: string): Promise<Video> => {
 		likeRatio: Number(extractRegex(html, /<i class="thumbsUp ph-icon-thumb-up"><\/i><span class="percent">(.+?)<\/span>/gms)?.replaceAll("%", "")) / 100,
 		duration: Number(extractRegex(html, /<meta property="video:duration" content="(.+?)" \/>/gms)),
 		thumbnail: extractRegex(html, /<div id="player.*?<img src="(.+?)"/gms)!,
+		creator: {
+			tag: extractRegex(html, /<div class="userInfo".*?\/model\/(.+?)"/gms)!,
+			url: BASE_URL + "/model/" + extractRegex(html, /<div class="userInfo".*?\/model\/(.+?)"/gms),
+			avatar: extractRegex(html, /<div class="userAvatar".*?src="(.+?)"/gms)!,
+			getDetails: async () => await getAccount(extractRegex(html, /<div class="userInfo".*?\/model\/(.+?)"/gms)!),
+		},
 		streams,
 		tags,
 		dateAdded,
@@ -357,8 +371,8 @@ export const getAccount = async (tag: string): Promise<Account> => {
 
 	const html = await response.text();
 
-	const data: Account = {
-		tag: tag.toLowerCase(),
+	return {
+		tag: response.url.split("/").pop()!,
 		username: extractRegex(html, /<h1 itemprop="name">\n(.+)<\/h1>/gm)!,
 		description: extractRegex(html, /<section class="aboutMeSection sectionDimensions ">.*?<\/div>.+?<div>(.+?)<\/div>/gms)!,
 		url: response.url,
@@ -374,6 +388,4 @@ export const getAccount = async (tag: string): Promise<Account> => {
 		getVideos: async (page: number) => await getVideos(tag, page),
 		getAllVideos: async () => await getAllVideos(tag),
 	};
-
-	return data;
 };
