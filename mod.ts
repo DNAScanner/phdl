@@ -50,7 +50,7 @@ export type Video = {
 	}
 	streams: StreamData[];
 	tags: string[];
-	dateAdded: string;
+	dateAdded: number;
 };
 
 /**
@@ -236,6 +236,32 @@ export const getTags = async (videoUrl: string): Promise<string[]> => {
 		.filter((match) => match);
 };
 
+/**
+ * Fetches video data from the server using the provided video ID.
+ *
+ * @param {string} id - The unique identifier of the video.
+ * @returns {Promise<Video>} A promise that resolves to a Video object containing video details.
+ * @throws {Error} If the video does not exist or the response status is not 200.
+ *
+ * The returned Video object contains the following properties:
+ * - `title`: The original title of the video.
+ * - `url`: The URL of the video.
+ * - `id`: The unique identifier of the video.
+ * - `views`: The number of views the video has.
+ * - `likeRatio`: The like ratio of the video as a decimal.
+ * - `duration`: The duration of the video in seconds.
+ * - `thumbnail`: The URL of the video's thumbnail image.
+ * - `creator`: An object containing details about the video's creator:
+ *   - `tag`: The tag of the creator.
+ *   - `url`: The URL of the creator's profile.
+ *   - `avatar`: The URL of the creator's avatar image.
+ *   - `getDetails`: A function that fetches additional details about the creator.
+ * - `streams`: An array of StreamData objects, each containing:
+ *   - `url`: The URL of the video stream.
+ *   - `quality`: The quality of the video stream.
+ * - `tags`: An array of tags associated with the video.
+ * - `dateAdded`: The date the video was added, in milliseconds since the Unix epoch.
+ */
 export const getVideo = async (id: string): Promise<Video> => {
 	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
 
@@ -256,7 +282,7 @@ export const getVideo = async (id: string): Promise<Video> => {
 		.map((match) => match[1].trim())
 		.filter((match) => match);
 
-	const dateAdded = extractRegex(html, /'video_date_published' : '(.+?)'/gms)!.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+	const dateAdded = new Date(extractRegex(html, /'video_date_published' : '(.+?)'/gms)!.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")).getTime();
 
 	Deno.writeTextFileSync("test.html", html);
 
