@@ -8,7 +8,7 @@ const BASE_URL = "https://www.pornhub.com";
  * Represents the data for a stream.
  *
  * @typedef {Object} StreamData
- * @property {string} url - The URL of the stream.
+ * @property {string} url - The tag of the stream.
  * @property {string} quality - The quality of the stream.
  */
 export type StreamData = {
@@ -42,12 +42,12 @@ export type Video = {
 	likeRatio: number;
 	duration: number;
 	thumbnail: string;
-	creator : {
+	creator: {
 		tag: string;
 		url: string;
 		avatar: string;
 		getDetails: () => Promise<Account>;
-	}
+	};
 	streams: StreamData[];
 	tags: string[];
 	dateAdded: number;
@@ -88,7 +88,7 @@ export type Account = {
 	description: string;
 
 	/**
-	 * The URL of the account.
+	 * The tag of the account.
 	 */
 	url: string;
 
@@ -186,24 +186,18 @@ const convertDurationStringToSeconds = (duration: string): number => {
 };
 
 /**
- * Generates a URL for the account model of the given username.
- *
- * @param {string} username - The username for which to generate the account URL.
- * @returns {string} The generated account URL.
- */
-export const generateAccountUrl = (username: string): string => BASE_URL + `model/${username}`;
-
-/**
  * Fetches stream data from the given URL and returns an array of stream information.
  *
- * @param videoUrl - The URL of the video.
+ * @param id - The id of the video.
  * @returns {Promise<StreamData[]>} An array of all streams.
  * @throws {Error} Throws an error if the video does not exist.
  */
-export const getStreams = async (videoUrl: string): Promise<StreamData[]> => {
-	const response = await fetch(videoUrl, {headers});
+export const getStreams = async (id: string): Promise<StreamData[]> => {
+	if (id.includes("pornhub.com")) throw new Error("Please provide just the id of the video.");
 
-	if (response.status !== 200) throw new Error(`Video does not exist (${videoUrl})`, {cause: response.statusText});
+	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
+
+	if (response.status === 404) throw new Error(`Video does not exist (${id}).`);
 
 	const html = await response.text();
 
@@ -216,14 +210,16 @@ export const getStreams = async (videoUrl: string): Promise<StreamData[]> => {
 /**
  * Fetches the HTML content from the given URL and extracts tags from it.
  *
- * @param videoUrl - The URL of the video.
+ * @param id - The id of the video.
  * @returns {Promise<string[]>} An array of tags.
  * @throws {Error} Throws an error if the video does not exist.
  */
-export const getTags = async (videoUrl: string): Promise<string[]> => {
-	const response = await fetch(videoUrl, {headers});
+export const getTags = async (id: string): Promise<string[]> => {
+	if (id.includes("pornhub.com")) throw new Error("Please provide just the id of the video.");
 
-	if (response.status !== 200) throw new Error(`Video does not exist (${videoUrl})`, {cause: response.statusText});
+	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
+
+	if (response.status === 404) throw new Error(`Video does not exist (${id})`);
 
 	const html = await response.text();
 
@@ -245,24 +241,26 @@ export const getTags = async (videoUrl: string): Promise<string[]> => {
  *
  * The returned Video object contains the following properties:
  * - `title`: The original title of the video.
- * - `url`: The URL of the video.
+ * - `url`: The tag of the video.
  * - `id`: The unique identifier of the video.
  * - `views`: The number of views the video has.
  * - `likeRatio`: The like ratio of the video as a decimal.
  * - `duration`: The duration of the video in seconds.
- * - `thumbnail`: The URL of the video's thumbnail image.
+ * - `thumbnail`: The tag of the video's thumbnail image.
  * - `creator`: An object containing details about the video's creator:
  *   - `tag`: The tag of the creator.
- *   - `url`: The URL of the creator's profile.
- *   - `avatar`: The URL of the creator's avatar image.
+ *   - `url`: The tag of the creator's profile.
+ *   - `avatar`: The tag of the creator's avatar image.
  *   - `getDetails`: A function that fetches additional details about the creator.
  * - `streams`: An array of StreamData objects, each containing:
- *   - `url`: The URL of the video stream.
+ *   - `url`: The tag of the video stream.
  *   - `quality`: The quality of the video stream.
  * - `tags`: An array of tags associated with the video.
  * - `dateAdded`: The date the video was added, in milliseconds since the Unix epoch.
  */
 export const getVideo = async (id: string): Promise<Video> => {
+	if (id.includes("pornhub.com")) throw new Error("Please provide just the id of the video.");
+
 	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
 
 	if (response.status !== 200) throw new Error(`Video does not exist (${id})`);
@@ -284,7 +282,6 @@ export const getVideo = async (id: string): Promise<Video> => {
 
 	const dateAdded = new Date(extractRegex(html, /'video_date_published' : '(.+?)'/gms)!.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")).getTime();
 
-	Deno.writeTextFileSync("test.html", html);
 
 	return {
 		title: extractRegex(html, /videoTitleOriginal":"(.+?)"/gms)!,
@@ -309,11 +306,13 @@ export const getVideo = async (id: string): Promise<Video> => {
 /**
  * Fetches the number of video pages for a given tag.
  *
- * @param {string} tag - The URL of the account.
+ * @param {string} tag - The tag of the account.
  * @returns {Promise<number>} Represents the number of video pages.
  * @throws {Error} Throws an error, if the account does not exist.
  */
 export const getVideoPageCount = async (tag: string): Promise<number> => {
+	if (tag.includes("pornhub.com")) throw new Error("Please provide just the tag of the account.");
+
 	const response = await fetch(BASE_URL + "/model/" + tag + `/videos`, {headers});
 
 	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
@@ -324,17 +323,19 @@ export const getVideoPageCount = async (tag: string): Promise<number> => {
 /**
  * Fetches videos based from a page on an account URL.
  *
- * @param {string} tag - The URL of the account.
- * @param {number} page - The page number to fetch videos from.
+ * @param {string} tag - The tag of the account.
+ * @param {number} page - The page index to fetch videos from.
  * @param {Order} [order] - Optional parameter to specify the order of the videos.
  * @returns {Promise<AccountVideo[]>} An array of the video data.
  * @throws {Error} Throws an error if the page is out of bounds or the account does not exist.
  */
 export const getVideos = async (tag: string, page: number, order?: Order): Promise<AccountVideo[]> => {
-	const response = await fetch(BASE_URL + "/model/" + tag + `/videos?page=${page + (order || Order.MostRecent)}`, {headers});
+	if (tag.includes("pornhub.com")) throw new Error("Please provide just the tag of the account.");
 
-	if (response.status !== 200) throw new Error(`This page is out of bounds (${tag} page=${page})`);
-	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
+	const response = await fetch(BASE_URL + "/model/" + tag + `/videos?page=${page + 1 + (order || Order.MostRecent)}`, {headers});
+
+	if (response.status === 404) throw new Error(`Page is out of bounds (${page})`);
+	else if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
 
 	const html = await response.text();
 	const videosElement = extractRegex(html, /<ul class="videos row-5-thumbs" id="mostRecentVideosSection">(.+?)<\/ul>/gms)!;
@@ -366,17 +367,19 @@ export const getVideos = async (tag: string, page: number, order?: Order): Promi
 /**
  * Fetches videos of all pages of the account.
  *
- * @param {string} tag - The URL of the account.
+ * @param {string} tag - The tag of the account.
  * @param {Order} [order] - Optional parameter to specify the order of the videos.
  * @returns {Promise<AccountVideo[]>} An array of all video data.
  * @throws {Error} Throws an error if the account does not exist.
  */
 export const getAllVideos = async (tag: string, order?: Order): Promise<AccountVideo[]> => {
+	if (tag.includes("pornhub.com")) throw new Error("Please provide just the tag of the account.");
+
 	const pageCount = await getVideoPageCount(tag);
 
 	let allVideos: AccountVideo[] = [];
 
-	for (let i = 1; i <= pageCount; i++) {
+	for (let i = 0; i <= pageCount - 1; i++) {
 		allVideos = allVideos.concat(await getVideos(tag, i, order));
 	}
 
@@ -386,11 +389,13 @@ export const getAllVideos = async (tag: string, order?: Order): Promise<AccountV
 /**
  * Fetches account data for a given user tag.
  *
- * @param {string} tag - The URL of the account.
+ * @param {string} tag - The tag of the account.
  * @returns {Promise<Account>} The account data.
  * @throws {Error} Throws an error if the account does not exist.
  */
 export const getAccount = async (tag: string): Promise<Account> => {
+	if (tag.includes("pornhub.com")) throw new Error("Please provide just the tag of the account.");
+
 	const response = await fetch(BASE_URL + "/model/" + tag, {headers});
 
 	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
