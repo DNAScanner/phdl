@@ -125,12 +125,12 @@ export type Account = {
 	/**
 	 * The location of the account holder.
 	 */
-	location: string;
+	location?: string;
 
 	/**
 	 * The birthplace of the account holder.
 	 */
-	birthplace: string;
+	birthplace?: string;
 
 	/**
 	 * Retrieves the number of video pages.
@@ -205,7 +205,7 @@ export const getStreams = async (id: string): Promise<StreamData[]> => {
 		.map((match) => JSON.parse(match[1]) as string)
 		.map((url) => ({url, quality: extractRegex(url, /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms)!}))
 		.sort((a, b) => Number(b.quality) - Number(a.quality));
-};
+};1
 
 /**
  * Fetches the HTML content from the given URL and extracts tags from it.
@@ -263,9 +263,20 @@ export const getVideo = async (id: string): Promise<Video> => {
 
 	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
 
+	console.log(response);
+
 	if (response.status !== 200) throw new Error(`Video does not exist (${id})`);
 
 	const html = await response.text();
+
+	Deno.writeTextFileSync("/home/dnascanner/Desktop/Projects/phdl/video.html", `<!-- ${response.url} -->\n` + html);
+	1;
+
+	if (html.includes("leastFactor(n)")) {
+		console.log(`Request was blocked, retrying + ${Date.now()}`);
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+		return await getVideo(id);
+	}
 
 	const streams: StreamData[] = [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
 		.map((match) => JSON.parse(match[1]) as string)
@@ -281,7 +292,6 @@ export const getVideo = async (id: string): Promise<Video> => {
 		.filter((match) => match);
 
 	const dateAdded = new Date(extractRegex(html, /'video_date_published' : '(.+?)'/gms)!.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")).getTime();
-
 
 	return {
 		title: extractRegex(html, /videoTitleOriginal":"(.+?)"/gms)!,
