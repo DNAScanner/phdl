@@ -39,7 +39,6 @@ export type Video = {
 	url: string;
 	id: string;
 	views: number;
-	likeRatio: number;
 	duration: number;
 	thumbnail: string;
 	creator: {
@@ -61,7 +60,6 @@ export type AccountVideo = {
 	url: string;
 	id: string;
 	views: number;
-	likeRatio: number;
 	duration: number;
 	thumbnail: string;
 	preview: string;
@@ -244,7 +242,6 @@ export const getTags = async (id: string): Promise<string[]> => {
  * - `url`: The tag of the video.
  * - `id`: The unique identifier of the video.
  * - `views`: The number of views the video has.
- * - `likeRatio`: The like ratio of the video as a decimal.
  * - `duration`: The duration of the video in seconds.
  * - `thumbnail`: The tag of the video's thumbnail image.
  * - `creator`: An object containing details about the video's creator:
@@ -287,7 +284,6 @@ export const getVideo = async (id: string): Promise<Video> => {
 		url: response.url,
 		id,
 		views: convertShotertenedNumberToFull(extractRegex(html, /<div class="views"><span class="count">(.+?)<\/span>/gms)!),
-		likeRatio: Number(extractRegex(html, /<i class="thumbsUp ph-icon-thumb-up"><\/i><span class="percent">(.+?)<\/span>/gms)?.replaceAll("%", "")) / 100,
 		duration: Number(extractRegex(html, /<meta property="video:duration" content="(.+?)" \/>/gms)),
 		thumbnail: extractRegex(html, /<div id="player.*?<img src="(.+?)"/gms)!,
 		creator: {
@@ -350,7 +346,6 @@ export const getVideos = async (tag: string, page: number, order?: Order): Promi
 			url: BASE_URL + "/" + extractRegex(videoHtml, /href="\/([^"]+)"/gms)!,
 			id: extractRegex(videoHtml, /data-video-vkey="(.+?)"/gms)!,
 			views: convertShotertenedNumberToFull(extractRegex(videoHtml, /<var>(.+?)<\/var>/gms)!),
-			likeRatio: Number(extractRegex(videoHtml, /div class="value">(.+?)</gms)!.replace("%", "")) / 100,
 			duration: convertDurationStringToSeconds(extractRegex(videoHtml, /<var class="duration">(.+?)</gms)!),
 			thumbnail: extractRegex(videoHtml, /src="(https:\/\/.+?)"/gms)!,
 			preview: extractRegex(videoHtml, /data-mediabook="(https:\/\/.+?)"/gms)!,
