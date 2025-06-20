@@ -1,159 +1,10 @@
+import { type Account, type AccountVideo, Order, type StreamData, type Video } from "./types.ts";
+
 const headers = {
 	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
 };
 
 const BASE_URL = "https://www.pornhub.com";
-
-/**
- * Represents the data for a stream.
- *
- * @typedef {Object} StreamData
- * @property {string} url - The tag of the stream.
- * @property {string} quality - The quality of the stream.
- */
-export type StreamData = {
-	url: string;
-	quality: string;
-};
-
-/**
- * Enum representing different order types for sorting.
- *
- * @enum {string}
- * @property {string} MostViewed - Sort by most viewed items.
- * @property {string} MostRecent - Sort by most recent items.
- * @property {string} TopRated - Sort by top rated items.
- * @property {string} Longest - Sort by longest items.
- * @property {string} Best - Default sorting order.
- */
-export enum Order {
-	MostViewed = "&o=mv",
-	MostRecent = "&o=mr",
-	TopRated = "&o=tr",
-	Longest = "&o=lg",
-	Best = "",
-}
-
-export type Video = {
-	title: string;
-	url: string;
-	id: string;
-	views: number;
-	duration: number;
-	thumbnail: string;
-	creator: {
-		tag: string;
-		url: string;
-		avatar: string;
-		getDetails: () => Promise<Account>;
-	};
-	streams: StreamData[];
-	tags: string[];
-	dateAdded: number;
-};
-
-/**
- * Represents the data associated with a video.
- */
-export type AccountVideo = {
-	title: string;
-	url: string;
-	id: string;
-	views: number;
-	duration: number;
-	thumbnail: string;
-	preview: string;
-	getDetails: () => Promise<Video>;
-};
-
-/**
- * Represents the data associated with an account.
- */
-export type Account = {
-	/**
-	 * The tag associated with the account.
-	 */
-	tag: string;
-
-	/**
-	 * The username of the account.
-	 */
-	username: string;
-
-	/**
-	 * The description of the account.
-	 */
-	description: string;
-
-	/**
-	 * The tag of the account.
-	 */
-	url: string;
-
-	/**
-	 * The avatar information of the account.
-	 */
-	avatar: string;
-
-	/**
-	 * The banner information of the account.
-	 */
-	banner: string;
-
-	/**
-	 * The rank of the account.
-	 */
-	rank: number;
-
-	/**
-	 * The number of views the account has.
-	 */
-	views: number;
-
-	/**
-	 * The number of subscribers the account has.
-	 */
-	subscribers: number;
-
-	/**
-	 * The gender of the account holder.
-	 */
-	gender: "couple" | "female" | "male";
-
-	/**
-	 * The location of the account holder.
-	 */
-	location?: string;
-
-	/**
-	 * The birthplace of the account holder.
-	 */
-	birthplace?: string;
-
-	/**
-	 * Retrieves the number of video pages.
-	 * @returns A promise that resolves to the number of video pages.
-	 */
-	getVideoPageCount: () => Promise<number>;
-
-	/**
-	 * Retrieves the videos on a specific page.
-	 * @param page - The page number to retrieve videos from.
-	 * @returns A promise that resolves to an array of VideoData objects.
-	 */
-	getVideos: (page: number) => Promise<AccountVideo[]>;
-
-	/**
-	 * Retrieves all videos associated with the account.
-	 * @returns A promise that resolves to an array of all VideoData objects.
-	 */
-	getAllVideos: () => Promise<AccountVideo[]>;
-};
-
-const extractRegex = (input: string, regex: RegExp): string | undefined => {
-	const match = regex.exec(input);
-	return match ? match[1].trim() : undefined;
-};
 
 const convertShotertenedNumberToFull = (shortened: string): number => {
 	// 1.2M -> 1200000
@@ -193,16 +44,18 @@ const convertDurationStringToSeconds = (duration: string): number => {
 export const getStreams = async (id: string): Promise<StreamData[]> => {
 	if (id.includes("pornhub.com")) throw new Error("Please provide just the id of the video.");
 
-	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
+	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, { headers });
 
 	if (response.status === 404) throw new Error(`Video does not exist (${id}).`);
 
 	const html = await response.text();
 
-	return [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
+	const streams: StreamData[] = [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
 		.map((match) => JSON.parse(match[1]) as string)
-		.map((url) => ({url, quality: extractRegex(url, /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms)!}))
+		.map((url) => ({ url, quality: /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms.exec(url)?.[1]! }))
 		.sort((a, b) => Number(b.quality) - Number(a.quality));
+
+	return streams;
 };
 
 /**
@@ -215,19 +68,17 @@ export const getStreams = async (id: string): Promise<StreamData[]> => {
 export const getTags = async (id: string): Promise<string[]> => {
 	if (id.includes("pornhub.com")) throw new Error("Please provide just the id of the video.");
 
-	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
+	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, { headers });
 
 	if (response.status === 404) throw new Error(`Video does not exist (${id})`);
 
 	const html = await response.text();
 
-	return [
-		...extractRegex(html, /<p>Categories&nbsp;<\/p>(.+?)<div/gms)!
-			.trim()
-			.matchAll(/>(.+?)</gms),
-	]
-		.map((match) => match[1].trim())
-		.filter((match) => match);
+	const tagsHtml = /<p>Categories&nbsp;<\/p>(?<categories>.*?)<div/gms.exec(html)?.groups?.categories;
+
+	const tags = !tagsHtml ? [] : [...tagsHtml.matchAll(/>(.*?)</gms)].map((match) => match[1].trim()).filter((tag) => tag);
+
+	return tags;
 };
 
 /**
@@ -258,39 +109,36 @@ export const getTags = async (id: string): Promise<string[]> => {
 export const getVideo = async (id: string): Promise<Video> => {
 	if (id.includes("pornhub.com")) throw new Error("Please provide just the id of the video.");
 
-	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, {headers});
+	const response = await fetch(BASE_URL + "/view_video.php?viewkey=" + id, { headers });
 
 	if (response.status !== 200) throw new Error(`Video does not exist (${id})`);
 
 	const html = await response.text();
+	Deno.writeTextFileSync("debug.html", html);
 
 	const streams: StreamData[] = [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
 		.map((match) => JSON.parse(match[1]) as string)
-		.map((url) => ({url, quality: extractRegex(url, /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms)!}))
+		.map((url) => ({ url, quality: /\/videos\/[0-9]+\/[0-9]+\/[0-9]+\/(.+?)P/gms.exec(url)?.[1]! }))
 		.sort((a, b) => Number(b.quality) - Number(a.quality));
 
-	const tags = [
-		...extractRegex(html, /<p>Categories&nbsp;<\/p>(.+?)<div/gms)!
-			.trim()
-			.matchAll(/>(.+?)</gms),
-	]
-		.map((match) => match[1].trim())
-		.filter((match) => match);
+	const tagsHtml = /<p>Categories&nbsp;<\/p>(?<categories>.*?)<div/gms.exec(html)?.groups?.categories;
 
-	const dateAdded = new Date(extractRegex(html, /'video_date_published' : '(.+?)'/gms)!.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")).getTime();
+	const tags = !tagsHtml ? [] : [...tagsHtml.matchAll(/>(.*?)</gms)].map((match) => match[1].trim()).filter((tag) => tag);
+
+	const dateAdded = new Date(/'video_date_published' : '(?<date>.*?)'/gms.exec(html)?.groups?.date.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")!).getTime();
 
 	return {
-		title: extractRegex(html, /videoTitleOriginal":"(.+?)"/gms)!,
+		title: /videoTitleOriginal":"(?<title>.*?)"/gms.exec(html)?.groups?.title.trim()!,
 		url: response.url,
 		id,
-		views: convertShotertenedNumberToFull(extractRegex(html, /<div class="views"><span class="count">(.+?)<\/span>/gms)!),
-		duration: Number(extractRegex(html, /<meta property="video:duration" content="(.+?)" \/>/gms)),
-		thumbnail: extractRegex(html, /<div id="player.*?<img src="(.+?)"/gms)!,
+		views: convertShotertenedNumberToFull(/<div class="views"><span class="count">(?<views>.*?)<\/span>/gms.exec(html)?.groups?.views.trim()!),
+		duration: Number(/<meta property="video:duration" content="(?<duration>.*?)" \/>/gms.exec(html)?.groups?.duration.trim()),
+		thumbnail: /<div id="player.*?<img src="(?<url>.*?)"/gms.exec(html)?.groups?.url.trim()!,
 		creator: {
-			tag: extractRegex(html, /<div class="userInfo".*?\/model\/(.+?)"/gms)!,
-			url: BASE_URL + "/model/" + extractRegex(html, /<div class="userInfo".*?\/model\/(.+?)"/gms),
-			avatar: extractRegex(html, /<div class="userAvatar".*?src="(.+?)"/gms)!,
-			getDetails: async () => await getAccount(extractRegex(html, /<div class="userInfo".*?\/model\/(.+?)"/gms)!),
+			tag: /<div class="userInfo".*?\/model\/(?<tag>.*?)"/gms.exec(html)?.groups?.tag.trim()!,
+			url: BASE_URL + "/model/" + /<div class="userInfo".*?\/model\/(?<tag>.*?)"/gms.exec(html)?.groups?.tag.trim()!,
+			avatar: /<div class="userAvatar".*?src="(?<url>.*?)"/gms.exec(html)?.groups?.url.trim()!,
+			getDetails: async () => await getAccount(/<div class="userInfo".*?\/model\/(?<tag>.*?)"/gms.exec(html)?.groups?.tag.trim()!),
 		},
 		streams,
 		tags,
@@ -308,7 +156,7 @@ export const getVideo = async (id: string): Promise<Video> => {
 export const getVideoPageCount = async (tag: string): Promise<number> => {
 	if (tag.includes("pornhub.com")) throw new Error("Please provide just the tag of the account.");
 
-	const response = await fetch(BASE_URL + "/model/" + tag + `/videos`, {headers});
+	const response = await fetch(BASE_URL + "/model/" + tag + `/videos`, { headers });
 
 	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
 
@@ -327,14 +175,14 @@ export const getVideoPageCount = async (tag: string): Promise<number> => {
 export const getVideos = async (tag: string, page: number, order?: Order): Promise<AccountVideo[]> => {
 	if (tag.includes("pornhub.com")) throw new Error("Please provide just the tag of the account.");
 
-	const response = await fetch(BASE_URL + "/model/" + tag + `/videos?page=${page + 1 + (order || Order.MostRecent)}`, {headers});
+	const response = await fetch(BASE_URL + "/model/" + tag + `/videos?page=${page + 1 + (order || Order.MostRecent)}`, { headers });
 
 	if (response.status === 404) throw new Error(`Page is out of bounds (${page})`);
 	else if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
 
 	const html = await response.text();
-	const videosElement = extractRegex(html, /<ul class="videos row-5-thumbs" id="mostRecentVideosSection">(.+?)<\/ul>/gms)!;
-	const videos = [...videosElement.matchAll(/<li class="pcVideoListItem.+?videoBox.+?".+?<\/li>/gms)];
+	const videosElement = /<ul class="full-row-thumbs videos row-5-thumbs".*?>(?<videos>.*?)<\/ul>/gms.exec(html)?.groups?.videos;
+	const videos = !videosElement ? [] : [...videosElement.matchAll(/<li class=".*?videoBox.*?<\/li>/gms)];
 
 	const allVideos: AccountVideo[] = [];
 
@@ -342,13 +190,12 @@ export const getVideos = async (tag: string, page: number, order?: Order): Promi
 		const videoHtml = videoOnPage[0].trim();
 
 		const video: AccountVideo = {
-			title: extractRegex(videoHtml, /alt="(.+?)"/gms)!,
-			url: BASE_URL + "/" + extractRegex(videoHtml, /href="\/([^"]+)"/gms)!,
-			id: extractRegex(videoHtml, /data-video-vkey="(.+?)"/gms)!,
-			views: convertShotertenedNumberToFull(extractRegex(videoHtml, /<var>(.+?)<\/var>/gms)!),
-			duration: convertDurationStringToSeconds(extractRegex(videoHtml, /<var class="duration">(.+?)</gms)!),
-			thumbnail: extractRegex(videoHtml, /src="(https:\/\/.+?)"/gms)!,
-			preview: extractRegex(videoHtml, /data-mediabook="(https:\/\/.+?)"/gms)!,
+			title: /<a href=.*?title="(?<title>.*?)"/gms.exec(videoHtml)?.groups?.title.trim()!,
+			url: BASE_URL + /<a href="(?<url>.*?)"/gms.exec(videoHtml)?.groups?.url.trim()!,
+			id: /data-video-vkey="(?<id>.*?)"/gms.exec(videoHtml)?.groups?.id.trim()!,
+			duration: convertDurationStringToSeconds(/"Video Duration">(?<views>.*?)</gms.exec(videoHtml)?.groups?.views.trim()!),
+			thumbnail: /data-mediumthumb="(?<url>.*?)"/gms.exec(videoHtml)?.groups?.url.trim()!,
+			preview: /data-mediabook="(?<url>.*?)"/gms.exec(videoHtml)?.groups?.url.trim()!,
 			getDetails: async () => await getVideo(video.id),
 		};
 
@@ -390,7 +237,7 @@ export const getAllVideos = async (tag: string, order?: Order): Promise<AccountV
 export const getAccount = async (tag: string): Promise<Account> => {
 	if (tag.includes("pornhub.com")) throw new Error("Please provide just the tag of the account.");
 
-	const response = await fetch(BASE_URL + "/model/" + tag, {headers});
+	const response = await fetch(BASE_URL + "/model/" + tag, { headers });
 
 	if (response.url.includes("com/pornstars")) throw new Error(`Account does not exist (${tag})`);
 
@@ -398,17 +245,16 @@ export const getAccount = async (tag: string): Promise<Account> => {
 
 	return {
 		tag: response.url.split("/").pop()!,
-		username: extractRegex(html, /<h1 itemprop="name">\n(.+)<\/h1>/gm)!,
-		description: extractRegex(html, /<section class="aboutMeSection sectionDimensions ">.*?<\/div>.+?<div>(.+?)<\/div>/gms)!,
+		username: /<h1 itemprop="name">\n(?<name>.*)<\/h1>/gms.exec(html)?.groups?.name.trim()!,
+		description: /<section class="aboutMeSection sectionDimensions.*?<div>(?<description>.*?)<\/div>/gms.exec(html)?.groups?.description.replaceAll("\r\n", "\n").trim()!,
 		url: response.url,
-		avatar: extractRegex(html, /<img id="getAvatar".+src="([^"]+)"/g)!,
-		banner: extractRegex(html, /<img id="coverPictureDefault".+src="([^"]+)"/g)!,
-		rank: Number(extractRegex(html, /<div class="infoBox">\n.+\n([^<]+)/gm)!),
-		views: Number(extractRegex(html, /<div class="tooltipTrig infoBox videoViews" data-title="Video views:([^"]+)/gm)!.replaceAll(",", "")),
-		subscribers: Number(extractRegex(html, /<div class="tooltipTrig infoBox" data-title="Subscribers:([^"]+)/gm)!.replaceAll(",", "")),
-		gender: extractRegex(html, /<span itemprop="gender" class="smallInfo">\n(.+)<\/span>/gm)!.toLowerCase() as Account["gender"],
-		location: extractRegex(html, /City and Country:\n.+<\/span>\n.+<span itemprop="" class="smallInfo">\n(.+)<\/span>/gm)!,
-		birthplace: extractRegex(html, /<span itemprop="birthPlace" class="smallInfo">\n(.+)<\/span>/gm)!,
+		avatar: /<img id="getAvatar" src="(?<url>.*?)"/gms.exec(html)?.groups?.url!,
+		banner: /<img id="coverPictureDefault" src="(?<url>.*?)"/gms.exec(html)?.groups?.url!,
+		rank: Number(/<div class="infoBox".*?big">(?<rank>.*?)</gms.exec(html)?.groups?.rank.trim()),
+		views: Number(/Video views: (?<views>.*?)"/gms.exec(html)?.groups?.views.replaceAll(",", "").trim()),
+		subscribers: Number(/Subscribers: (?<subscribers>.*?)"/gms.exec(html)?.groups?.subscribers.replaceAll(",", "").trim()),
+		gender: /<span itemprop="gender" class="smallInfo">(?<gender>.*?)</gms.exec(html)?.groups?.gender.trim().toLowerCase() as Account["gender"],
+		birthplace: /<span itemprop="birthPlace" class="smallInfo">(?<birthplace>.*?)</gms.exec(html)?.groups?.birthplace.trim(),
 		getVideoPageCount: async () => await getVideoPageCount(tag),
 		getVideos: async (page: number) => await getVideos(tag, page),
 		getAllVideos: async () => await getAllVideos(tag),
