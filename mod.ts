@@ -114,7 +114,6 @@ export const getVideo = async (id: string): Promise<Video> => {
 	if (response.status !== 200) throw new Error(`Video does not exist (${id})`);
 
 	const html = await response.text();
-	Deno.writeTextFileSync("debug.html", html);
 
 	const streams: StreamData[] = [...html.matchAll(/"format":"hls","videoUrl":(".+?")/gms)]
 		.map((match) => JSON.parse(match[1]) as string)
@@ -133,7 +132,7 @@ export const getVideo = async (id: string): Promise<Video> => {
 		id,
 		views: convertShotertenedNumberToFull(/<div class="views"><span class="count">(?<views>.*?)<\/span>/gms.exec(html)?.groups?.views.trim()!),
 		duration: Number(/<meta property="video:duration" content="(?<duration>.*?)" \/>/gms.exec(html)?.groups?.duration.trim()),
-		thumbnail: /<div id="player.*?<img src="(?<url>.*?)"/gms.exec(html)?.groups?.url.trim()!,
+		thumbnail: /<meta property="og:image" content="(?<url>.*?)"/gms.exec(html)?.groups?.url.trim()!,
 		creator: {
 			tag: /<div class="userInfo".*?\/model\/(?<tag>.*?)"/gms.exec(html)?.groups?.tag.trim()!,
 			url: BASE_URL + "/model/" + /<div class="userInfo".*?\/model\/(?<tag>.*?)"/gms.exec(html)?.groups?.tag.trim()!,
